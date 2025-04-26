@@ -1,5 +1,6 @@
 package com.example.jpabatchrepository.config;
 
+import com.example.jpabatchrepository.entity.ProcessedLoginActivity;
 import com.example.jpabatchrepository.entity.UserActivityLog;
 import com.example.jpabatchrepository.repository.UserActivityLogRepository;
 import org.springframework.batch.core.Job;
@@ -8,9 +9,11 @@ import org.springframework.batch.core.configuration.annotation.EnableBatchProces
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.data.RepositoryItemReader;
 import org.springframework.batch.item.data.builder.RepositoryItemReaderBuilder;
+import org.springframework.batch.item.database.JpaItemWriter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.Sort;
@@ -23,19 +26,22 @@ public class UserActivityLogBatchConfig {
 
     private final JobRepository jobRepository;
     private final UserActivityLogRepository userActivityLogRepository;
+    private final ItemProcessor<UserActivityLog, ProcessedLoginActivity> userActivityLogProcessor;
+    private final JpaItemWriter<ProcessedLoginActivity> processedLoginActivityWriter; // JpaItemWriter 주입
 
-    public UserActivityLogBatchConfig(JobRepository jobRepository, UserActivityLogRepository userActivityLogRepository) {
+    public UserActivityLogBatchConfig(JobRepository jobRepository, UserActivityLogRepository userActivityLogRepository, ItemProcessor<UserActivityLog, ProcessedLoginActivity> userActivityLogProcessor, JpaItemWriter<ProcessedLoginActivity> processedLoginActivityWriter) {
         this.jobRepository = jobRepository;
         this.userActivityLogRepository = userActivityLogRepository;
+        this.userActivityLogProcessor = userActivityLogProcessor;
+        this.processedLoginActivityWriter = processedLoginActivityWriter;
     }
-
     @Bean
     public RepositoryItemReader<UserActivityLog> userActivityLogReader() {
         return new RepositoryItemReaderBuilder<UserActivityLog>()
                 .name("userActivityLogReader")
                 .repository(userActivityLogRepository)
-                .methodName("findAll") // 또는 특정 조건에 따른 조회 메소드
-                .pageSize(100) // 한 번에 읽어올 데이터 크기
+                .methodName("findAll")
+                .pageSize(100)
                 .sorts(Collections.singletonMap("id", Sort.Direction.ASC))
                 .build();
     }
@@ -53,9 +59,10 @@ public class UserActivityLogBatchConfig {
     @Bean
     public Step processUserActivityLogStep() {
         return new StepBuilder("processUserActivityLogStep", jobRepository)
-                .<UserActivityLog, UserActivityLog>chunk(100)
+                .<UserActivityLog, ProcessedLoginActivity>chunk(100)
                 .reader(userActivityLogReader())
-                .writer(userActivityLogWriter())
+                .processor(userActivityLogProcessor)
+                .writer(processedLoginActivityWriter) // JpaItemWriter 사용
                 .build();
     }
 
